@@ -364,11 +364,7 @@ All scripts share a similar Flask API structure:
 
 ---
 
-## Artist Statement
 
-See [ARTIST_STATEMENT.md](docs/ARTIST_STATEMENT.md) for the full conceptual framework.
-
----
 
 ## Repository Structure
 
@@ -380,8 +376,7 @@ Magnetic-Field-Camera/
 ├── antisurveillance_camera.py         # Anti-surveillance art installation
 ├── setup_hotspot.sh                   # WiFi hotspot one-time setup
 ├── wifi_switch.sh                     # Hotspot ↔ WiFi toggle
-├── docs/
-│   ├── ARTIST_STATEMENT.md            # Conceptual framework & research context
+├── docs
 │   ├── SETUP_GUIDE.md                 # Detailed installation walkthrough
 │   ├── ARCHITECTURE.md                # Technical deep-dive
 │   └── WIRING.md                      # Hardware connection reference
@@ -405,8 +400,8 @@ Magnetic-Field-Camera/
 ## Contact
 
 **Corey Dziadzio**
-- 📧 Email: coreydziadzio@c11visualarts.com
-- 🌐 Website: [c11visualarts.com](https://www.c11visualarts.com/)
+- 📧 Email: coreydziadzio@coreydziadzio.com
+- 🌐 Website: (https://www.coreydziadzio.com/)
 - 🔗 GitHub: [@CJD-11](https://github.com/CJD-11)
 
 ---
