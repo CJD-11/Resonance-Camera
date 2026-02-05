@@ -1,4 +1,5 @@
-# Magnetic Field Camera & Anti-Surveillance System
+# Resonance Camera
+-Magnetic Field Camera & Anti-Surveillance System
 
 **An artistic exploration of invisible forces, surveillance, and counter-surveillance using a Raspberry Pi 4, BMM150 magnetometer, and live computer vision.**
 
