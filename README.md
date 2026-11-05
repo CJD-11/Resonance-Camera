@@ -1,307 +1,148 @@
 # Resonance Camera
 
-**Resonance Camera** is an experimental physical-computational imaging system that combines live camera imagery with measurements of environmental phenomena that are normally invisible.
+**Resonance Camera** is an experimental camera that uses environmental measurements to shape photographs. A Raspberry Pi 4 combines a live camera image with visual effects driven by geomagnetic, cosmic-ray, and space-weather data.
 
-The current system works across four complementary data layers:
+The effects are **artistic interpretations of measurements**, not literal pictures of invisible forces or particles.
 
-* **USGS geomagnetic measurements** — ground-based magnetic-field vectors from the closest supported observatory
-* **EPA RadNet** — geographically local or regional gamma-radiation measurements from the nearest configured monitor
-* **NMDB** — regional neutron-monitor counts used as a proxy for secondary cosmic-ray activity at ground level
-* **NOAA GOES** — proton and electron flux in the near-Earth space environment
+**Current build:** `resonance_camera_pi4_UI_v8_4_9.py` (`resonance-v8.4.9-standalone-defaults`). This version is designed to run primarily as a self-contained physical camera with an LCD, joystick, and shutter button. A browser interface remains available as an option.
 
-The project does not attempt to show what radiation, magnetism, or particle activity literally “looks like.” Instead, it treats **measurement as material for visual translation**, combining scientific data with computational image-making.
-
----
-
-## Current Data Model
+## How it works
 
 ```text
-                     CAMERA LOCATION
-                           │
-          ┌────────────────┼────────────────┐
-          │                │                │
-          ▼                ▼                ▼
-   USGS Geomag        EPA RadNet          NMDB
- ground magnetic      local/regional    regional cosmic-
-     context            gamma data       ray neutron data
-          │                │                │
-          └──────────┬─────┴──────┬─────────┘
-                     │            │
-                     │            ▼
-                     │        NOAA GOES
-                     │       space-particle
-                     │           flux
-                     │            │
-                     └──────┬─────┘
-                            ▼
-                      Raspberry Pi 4
-                            │
-                 normalization + caching
-                            │
-                      image mapping
-                            │
-                            ▼
-                       visual output
+Camera image ──────────────────────────┐
+                                      ├── Visual processing ── LCD / saved photo
+Location → environmental data → cache ┘
 ```
 
-Environmental measurements are retrieved independently from the live rendering loop and stored in a shared cache. The camera visualization reads only the latest in-memory snapshot, so network latency does not directly interrupt the live preview.
+The camera uses its configured location to select relevant data. Network requests run separately from the image-preview loop, so a slow data service does not need to stall the live image. When a source is unavailable, the program reports that condition rather than treating it as a local measurement.
 
----
+### Environmental data
 
-## Why the Project Moved Away From Onboard Sensors
+| Source | What the camera uses |
+| --- | --- |
+| **WMM2025** (via `pygeomag`) | A modeled magnetic-field vector for the camera's coordinates. |
+| **INTERMAGNET** | Recent magnetic-field readings from a nearby available observatory. **USGS Fredericksburg** is the fallback. |
+| **NOAA OVATION** | Aurora forecast values sampled from the grid nearest the camera. |
+| **NMDB / Oulu** | Ground-level neutron-monitor measurements used as a regional cosmic-ray proxy. The program tries the available `NEWK` and `OULU` sources and can reuse labeled cached data. |
+| **NOAA SWPC / GOES** | Solar-wind speed, interplanetary magnetic-field conditions, Kp, and proton/electron flux. |
 
-Early prototypes used inexpensive onboard magnetometers and radiation sensors.
+Location is taken from explicitly configured coordinates or a previously saved location. If automatic geolocation is enabled, the camera can also estimate its location by IP address. Optional Google Wi-Fi positioning requires an API key and sends nearby access-point information to Google's geolocation service.
 
-These components were valuable for testing the concept of direct environmental sensing, but their measurements were not stable or trustworthy enough to serve as the project’s primary data sources.
+**Change from earlier builds:** EPA RadNet and onboard magnetometer/Geiger readings are **not used** in this version.
 
-Magnetic readings were highly sensitive to:
+## Visual modes
 
-* sensor orientation
-* nearby electronics
-* power wiring
-* enclosure materials
-* calibration
+Four modes directly use the environmental data:
 
-Radiation measurements introduced different limitations, including:
+| Mode | Result |
+| --- | --- |
+| **Field Plate** | Contours, magnetic-field lines, and measurement annotations. |
+| **Field Warp** | Image distortion guided by magnetic-field direction and disturbance. |
+| **Cloud Chamber** | Schematic particle tracks whose behavior responds to space-weather and neutron-monitor data. |
+| **Resonance Plate** | A more abstract combination of interference, contours, distortions, and particle traces. |
 
-* long integration times
-* low or inconsistent event counts
-* sensor sensitivity
-* difficulty validating readings against a calibrated reference
+Earlier experimental effects are also available: **Panopticon, Afterimage, Emulsion, Faraday Veil, Erase, Mapped Erase, 4D Hyperspace, Composite, and Raw Camera**. Some of these work best with optional person detection enabled.
 
-This led to a deliberate architectural shift:
+The camera image and the effect overlay have **independent black-and-white / color settings**. The default is a black-and-white photograph with a color effect.
 
-> **Use established monitoring infrastructure for environmental measurement while keeping the interpretation and image-making process inside the camera.**
+## Hardware and controls
 
-The original sensors remain useful for experimentation and comparison, but they are not treated as authoritative environmental measurements.
+The current physical build uses a Raspberry Pi 4, a Pi-compatible camera module, a 320 × 240 SPI TFT display (ILI9340/ILI9341-compatible), an ADS1115-connected analog joystick, a separate shutter button, and an externally switched USB-C power supply. The TFT is **not a touchscreen** in this wiring configuration.
 
----
+| Control | Action |
+| --- | --- |
+| Joystick left / right | Change visualization mode. |
+| Joystick up / down | Increase / decrease effect intensity. |
+| Joystick press | Open settings for image tone and overlay tone. |
+| Shutter button | Save a processed high-resolution JPEG. |
+| After a photo | Left / right browses saved photos; joystick press returns to live view. |
 
-## Location-Responsive Data Selection
+The LCD shows the live composition and a small control panel. Saved captures default to **1440 × 2560 portrait JPEGs** after rotation. The photo-review screen appears after a shutter capture.
 
-The software determines the camera location using:
+**Default connections (BCM numbering):**
 
-1. explicit latitude / longitude configuration, or
-2. approximate IP-based geolocation as a fallback
+- Shutter: **GPIO27** to GND through a momentary switch.
+- Joystick press: **GPIO22**; analog signals use the **ADS1115** on I²C (**GPIO2 SDA / GPIO3 SCL**). The in-script wiring notes connect joystick `VRX → A0` and `VRY → A1`; software reads `A1` as X and `A0` as Y, so check directional behavior with the joystick test.
+- TFT: SPI0 **GPIO10 MOSI, GPIO9 MISO, GPIO11 SCK, GPIO8 CE0**, with **GPIO25 DC** and **GPIO24 RESET**. Optional microSD chip select is **GPIO7 CE1**. Check the display board's voltage and backlight requirements before wiring.
+- Power: use the **external USB-C switch**. GPIO17 is not used for power control.
 
-Explicit coordinates are recommended for field use.
+See the script's hardware comments for physical-header pin numbers and the full wiring map.
 
-The software then selects the most geographically relevant available sources:
+## Running the camera
 
-* the nearest supported **USGS geomagnetic observatory**
-* the nearest configured **EPA RadNet monitor**
-* the nearest supported **NMDB neutron monitor**
-* current **NOAA GOES** particle data
+The program targets Raspberry Pi OS with a supported `Picamera2`/libcamera camera setup and SPI/I²C enabled. Its Python dependencies include **NumPy, OpenCV, Pillow, Flask, Picamera2, RPi.GPIO, `pygeomag`, and the Adafruit Blinka/ADS1115 libraries**. Optional person detection uses **Ultralytics YOLO** and `yolov8n.pt`.
 
-GOES differs from the other sources because it represents the broader near-Earth space environment rather than a measurement taken near the camera.
+The default LCD backend also requires the separate executable **`resonance_lcd_bridge`**. The script points to `./build_native.sh` for building it; that build file and the bridge are **not part of the attached Python script**. The alternate `adafruit` and `luma` backends require `finearts_lcd_bridge.py`. Install and prepare the appropriate helper before starting the physical display.
 
-For a camera operating in Boston, the data hierarchy is approximately:
+Run on the Pi:
 
-```text
-Boston / camera location
-        │
-        ├── EPA RadNet Boston
-        │      local environmental gamma context
-        │
-        ├── nearest compatible USGS observatory
-        │      regional ground magnetic context
-        │
-        ├── NMDB Newark / Swarthmore
-        │      regional secondary cosmic-ray context
-        │
-        └── NOAA GOES
-               near-Earth proton / electron environment
+```bash
+# Override the script's machine-specific default directories if needed.
+export CAPTURE_DIR="$HOME/resonance-captures"
+export CAMERA_LOCATION_FILE="$HOME/resonance-location.json"
+python3 resonance_camera_pi4_UI_v8_4_9.py
 ```
 
-A portrait made in Boston can therefore be influenced by environmental measurements relevant to that location without implying that a remote monitoring station directly measured radiation or particles striking the photographed individual.
+By default, **`LOCAL_ONLY=1`**: the LCD and physical controls run, but the Flask web server does not start. To turn on the browser interface:
 
----
-
-## Visualization Modes
-
-The environmental visualizations range from comparatively representational diagrams to intentionally abstract interpretations.
-
-### Data-Informed / Schematic
-
-**Field Lines**
-Magnetic-vector direction and recent field variation control a dipole-like field projection.
-
-**Particle Arrival**
-GOES proton and electron activity controls incoming particle trajectories.
-
-**Magnetosphere**
-Combines geomagnetic measurements and space-particle activity into a schematic field-shell visualization.
-
-**Local Radiation**
-Nearby RadNet gamma measurements generate concentric interference structures around tracked bodies or the center of the frame.
-
-**Cosmic Cascade**
-NMDB neutron counts and GOES particle activity produce branching atmospheric shower-like traces.
-
-### Abstract
-
-**Signal Veil**
-Layered membranes, discontinuities, and interruptions react to environmental activity.
-
-**Resonance Map**
-Topographic rings, gaps, spatial absences, and shifting contours respond to the incoming datasets.
-
-**Data Bloom**
-Environmental measurements radiate outward from tracked bodies or the center of the frame.
-
-Earlier experimental visualization modes from the camera project are also retained in the repository.
-
----
-
-## Color Treatments
-
-Every visualization supports three global color modes.
-
-### B&W + Color — Default
-
-The photographic image is rendered in black and white while the environmental visualization remains in color.
-
-### Full Color
-
-Both the live camera image and visualization remain in color.
-
-### Full B&W
-
-The photographic image and visualization are both rendered monochromatically.
-
-This allows the same visualization logic to move between documentary, graphic, and more abstract visual treatments without duplicating individual modes.
-
----
-
-## Performance Strategy
-
-Low-latency preview is a central design requirement.
-
-The system separates tasks by update rate:
-
-```text
-Camera preview           up to ~30 fps target
-Object detection         lower independent rate
-USGS / GOES refresh      ~60 seconds
-NMDB refresh             ~120 seconds
-EPA RadNet refresh       ~5 minutes
+```bash
+LOCAL_ONLY=0 python3 resonance_camera_pi4_UI_v8_4_9.py
 ```
 
-Performance optimizations include:
+Then open `http://<pi-address>:5000`. Browser preview defaults to **FAST** (the unprocessed camera image); switch to **FX** to see effects in the browser. The physical LCD defaults to showing the effect (`LCD_SOURCE=fx`). Both modes still save processed photographs.
 
-* no API calls inside the frame-rendering loop
-* cached environmental snapshots
-* background network polling
-* cached image-warp coordinate grids
-* lightweight PIL / OpenCV overlays
-* deterministic particle positioning instead of reallocating random effects every frame
-* lower-resolution live preview
-* higher-resolution saved captures
+### Useful settings
 
-The result is a system where slow environmental measurements can influence a responsive live image without forcing the camera to operate at the speed of the APIs.
+Set these as environment variables before launching the script:
 
----
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `CAMERA_LAT`, `CAMERA_LON` | Unset | Explicit camera coordinates; recommended for accurate location selection. |
+| `GEO_AUTO` | `1` | Enable automatic geolocation fallback. |
+| `GEO_WIFI_API_KEY` | Unset | Opt in to Google Wi-Fi geolocation. |
+| `LOCAL_ONLY` | `1` | `1`: physical camera only; `0`: enable web interface. |
+| `ENABLE_DETECTION` | `0` | Enable optional YOLO person tracking. |
+| `LCD_SOURCE` | `fx` | Use `fx` for processed LCD preview or `raw` for a lighter preview. |
+| `LCD_BACKEND` | `bb` | Native bridge (`bb`), or the `adafruit` / `luma` helper. |
+| `CAPTURE_DIR` | `/home/stoopchild11/captures` | Where captured JPEGs are saved. |
+| `CAMERA_LOCATION_FILE` | `/home/stoopchild11/camera_location.json` | Persistent camera coordinates. |
+| `PREVIEW_FPS` | `20` | Target camera preview rate (not a guaranteed measured rate). |
+| `LCD_FPS` | `8` | Maximum target LCD update rate. |
+| `PHOTO_REVIEW_SEC` | `12` | Photo review duration; `0` keeps the review open until dismissed. |
 
-## Diagnostic Endpoint
+Environmental polling defaults to **20 seconds** for the main update loop, **120 seconds** for OVATION, and **300 seconds** for the neutron-monitor cache. Actual data age depends on each provider.
 
-The current environmental-data cache can be inspected at:
+## Diagnostics
 
-```text
-http://<camera-address>:5000/environment_data
+Run a hardware check without starting the regular camera:
+
+```bash
+python3 resonance_camera_pi4_UI_v8_4_9.py --lcd-test
+python3 resonance_camera_pi4_UI_v8_4_9.py --lcd-benchmark
+python3 resonance_camera_pi4_UI_v8_4_9.py --joystick-test
 ```
 
-The JSON response includes:
+With `LOCAL_ONLY=0`, the web interface provides:
 
-* camera location
-* selected USGS station and magnetic-field vector
-* selected EPA RadNet monitor and gamma measurement
-* selected NMDB monitor and neutron count rate
-* NOAA GOES proton and electron flux
-* source distance where applicable
-* measurement timestamps
-* API status and partial-data errors
+- `GET /detection_data` — includes the current environmental snapshot under `environment`, along with preview, tracking, and capture status.
+- `GET /environment/location` — reports the current location.
+- `POST /environment/location` — saves new coordinates, for example `{"lat": 42.36, "lon": -71.06, "alt_m": 0}`.
+- `GET /video_feed` — MJPEG camera preview.
 
-This allows the data pipeline to be evaluated independently from the visual output.
+The earlier `/environment_data` endpoint is **not present** in this script. For a local diagnostic export, send **`SIGUSR2`** to the running process; it writes `~/resonance-geo-status.json` by default. **`SIGUSR1`** exports the composed LCD screen as PNG files under `~/resonance-ui-exports/`.
 
----
+## Limitations
 
-## Hardware
+Resonance Camera is an **artistic imaging instrument**, not a calibrated radiation detector, magnetometer, medical device, or safety monitor. WMM values are modeled; observatory and neutron-monitor values may come from distant stations; and GOES describes the wider space environment. No visual mode should be interpreted as showing radiation or magnetic fields literally surrounding the person in the photograph.
 
-| Component                                      | Role                                                |   Approx. Cost |
-| ---------------------------------------------- | --------------------------------------------------- | -------------: |
-| Raspberry Pi 4                                 | Primary computational platform                      |            $55 |
-| Arduino-compatible microcontroller             | Hardware control / experimentation                  |            $15 |
-| ArduinoCam camera module                       | Image capture                                       |            $30 |
-| Magnetometer                                   | Experimental direct geomagnetic sensing             |            $10 |
-| Radiation / particle sensor                    | Experimental direct radiation sensing               |            $60 |
-| Environmental data services                    | Networked environmental measurements                |             $0 |
-| Regulated power supply                         | System power                                        |            $20 |
-| Custom 3D-printed enclosure + fabricated parts | Housing, mounting, internal structure, and assembly |           $100 |
-| Wiring, connectors & hardware                  | Internal assembly                                   |            $20 |
-| **Estimated Prototype Total**                  |                                                     | **≈ $310 USD** |
+Data availability and freshness vary with the network and provider. Person detection, when enabled, is an optional computational effect rather than an environmental measurement.
 
-The magnetometer and radiation sensor were used during early prototyping and remain useful for experimentation, but the current architecture relies primarily on established monitoring datasets.
+## Data and attribution
 
----
+- [World Magnetic Model (NOAA/NCEI)](https://www.ncei.noaa.gov/products/world-magnetic-model)
+- [INTERMAGNET](https://intermagnet.org/)
+- [USGS Geomagnetism](https://www.usgs.gov/tools/web-service-geomagnetism-data)
+- [NOAA Space Weather Prediction Center](https://www.swpc.noaa.gov/)
+- [NMDB](https://www.nmdb.eu/) and [University of Oulu cosmic-ray station](https://cosmicrays.oulu.fi/)
 
-## Camera Body + Fabrication
-
-The camera body was developed as a multi-part CAD assembly measuring approximately **160 × 110 × 89 mm**.
-
-The enclosure evolved through repeated cycles of:
-
-```text
-CAD → print → assemble → test → revise
-```
-
-Physical prototyping exposed constraints including:
-
-* component clearance
-* cable and wiring volume
-* mating tolerances
-* wall thickness
-* print orientation
-* fastener placement
-* assembly order
-* service access
-
-The enclosure therefore developed alongside the electronics and software rather than as a decorative shell added after the technical system was complete.
-
----
-
-## Interpretation + Limitations
-
-Resonance Camera is an **artistic and experimental imaging instrument**, not a calibrated scientific, medical, radiation-safety, dosimetry, or navigation instrument.
-
-EPA RadNet, NMDB, NOAA GOES, and USGS measurements are produced by different instruments operating at different geographic and temporal scales.
-
-The project intentionally preserves these distinctions.
-
-The final visual output should therefore be understood as a **data-informed interpretation of an environment**, not as a literal image of magnetic fields, radiation, cosmic rays, or particles surrounding a photographed subject.
-
----
-
-## Data Sources
-
-**U.S. EPA RadNet**
-https://www.epa.gov/radnet/radnet-near-real-time-air-data
-
-**USGS Geomagnetism Web Service**
-https://www.usgs.gov/tools/web-service-geomagnetism-data
-
-**NMDB Neutron Monitor Database**
-https://www.nmdb.eu/
-
-**NOAA Space Weather Prediction Center — GOES Data**
-https://services.swpc.noaa.gov/json/goes/
-
-NMDB data should be acknowledged according to NMDB and individual station-provider requirements. See `DATA_SOURCES.md` for implementation and attribution details.
-
----
-
-## Author
-
-**CJD-11**
-
-https://github.com/CJD-11
-
+Credit NMDB and individual neutron-monitor data providers in accordance with their data-use requirements.
